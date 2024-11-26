@@ -116,7 +116,7 @@ void NAT::start() {
 // Periodically clean up stale mappings
 void NAT::cleanup_mappings() {
     while (true) {
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::seconds(5)); // Cleanup interval
 
         std::lock_guard<std::mutex> lock(nat_mutex);
         auto now = std::time(nullptr);
@@ -131,8 +131,32 @@ void NAT::cleanup_mappings() {
                 ++it;
             }
         }
+
+        print_mappings();
     }
 }
+
+
+void NAT::print_mappings() {
+    std::cout << "\n=== Current NAT Mappings ===\n";
+    std::cout << "| Private IP       | Public IP        | Last Updated           |\n";
+    std::cout << "|------------------|------------------|-------------------------|\n";
+
+    if (nat_table.empty()) {
+        std::cout << "| No active mappings                                    |\n";
+    } else {
+        for (const auto& entry : nat_table) {
+            std::time_t timestamp = entry.second.timestamp;
+            std::cout << "| " << std::left << std::setw(16) << entry.first << " | "
+                      << std::setw(16) << entry.second.public_ip << " | "
+                      << std::setw(23) << std::ctime(&timestamp); // Includes newline
+        }
+    }
+
+    std::cout << "=========================================\n";
+}
+
+
 
 // Destructor
 NAT::~NAT() {
