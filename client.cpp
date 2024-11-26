@@ -4,6 +4,9 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#define DEFAULT_SERVER_IP "127.0.0.1"
+#define DEFAULT_SERVER_PORT 55000
+
 void run_client(const std::string& server_ip, int port, const std::string& private_ip) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
@@ -37,14 +40,20 @@ void run_client(const std::string& server_ip, int port, const std::string& priva
 }
 
 int main(int argc, char* argv[]) {
-    if (argc != 4) {
-        std::cerr << "Usage: " << argv[0] << " <server_ip> <port> <private_ip>" << std::endl;
+    std::string server_ip = DEFAULT_SERVER_IP;
+    int port = DEFAULT_SERVER_PORT;
+    std::string private_ip;
+
+    if (argc == 2) {
+        private_ip = argv[1];
+    } else if (argc == 4) {
+        server_ip = argv[1];
+        port = std::stoi(argv[2]);
+        private_ip = argv[3];
+    } else {
+        std::cerr << "Usage: " << argv[0] << " <private_ip> OR <server_ip> <port> <private_ip>" << std::endl;
         return 1;
     }
-
-    std::string server_ip = argv[1];
-    int port = std::stoi(argv[2]);
-    std::string private_ip = argv[3];
 
     run_client(server_ip, port, private_ip);
 
