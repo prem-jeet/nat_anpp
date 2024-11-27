@@ -7,6 +7,7 @@
 #include <mutex>
 #include <set>
 #include <netinet/in.h>
+#include <fstream>
 
 struct Mapping {
     std::string public_ip;
@@ -34,6 +35,11 @@ private:
     void handle_client(int client_socket);
     void cleanup_mappings();
     void print_mappings();
+
+    // File-related functions
+    void load_mappings_from_file();
+    void save_mapping_to_file(const std::string& private_ip, const Mapping& mapping);
+    void remove_mapping_from_file(const std::string& private_ip);
 };
 
 #endif

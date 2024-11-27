@@ -35,6 +35,9 @@ void NAT::save_ip_pool() {
 
 // Initialize the NAT server
 void NAT::init() {
+    load_mappings_from_file(); // Load mappings from file
+    initialize_ip_pool();
+
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == -1) {
         perror("Socket creation failed");
@@ -63,6 +66,7 @@ void NAT::init() {
     std::cout << "NAT server listening on port " << port << std::endl;
 }
 
+
 // Handle a single client
 void NAT::handle_client(int client_socket) {
     char buffer[1024] = {0};
@@ -73,29 +77,30 @@ void NAT::handle_client(int client_socket) {
         std::lock_guard<std::mutex> lock(nat_mutex);
 
         if (nat_table.find(private_ip) == nat_table.end()) {
-            // Assign a public IP if mapping doesn't exist
             if (!ip_pool.empty()) {
                 std::string public_ip = *ip_pool.begin();
                 ip_pool.erase(public_ip);
                 save_ip_pool();
-                nat_table[private_ip] = {public_ip, std::time(nullptr)};
+
+                Mapping new_mapping = {public_ip, std::time(nullptr)};
+                nat_table[private_ip] = new_mapping;
+                save_mapping_to_file(private_ip, new_mapping);
+
                 std::cout << "Assigned: " << private_ip << " -> " << public_ip << std::endl;
             } else {
                 std::cerr << "No available IPs in pool!" << std::endl;
             }
         } else {
-            // Update timestamp if mapping exists
             nat_table[private_ip].timestamp = std::time(nullptr);
+            save_mapping_to_file(private_ip, nat_table[private_ip]); // Rewrite file with updated state
             std::cout << "Updated timestamp for: " << private_ip << std::endl;
         }
-
-        std::string public_ip = nat_table[private_ip].public_ip;
-        std::string response = private_ip + " -> " + public_ip;
-        send(client_socket, response.c_str(), response.size(), 0);
     }
 
     close(client_socket);
 }
+
+
 
 // Start the NAT server
 void NAT::start() {
@@ -116,25 +121,34 @@ void NAT::start() {
 // Periodically clean up stale mappings
 void NAT::cleanup_mappings() {
     while (true) {
-        std::this_thread::sleep_for(std::chrono::seconds(5)); // Cleanup interval
+        std::this_thread::sleep_for(std::chrono::seconds(5));
 
         std::lock_guard<std::mutex> lock(nat_mutex);
         auto now = std::time(nullptr);
 
+        bool updated = false;
         for (auto it = nat_table.begin(); it != nat_table.end();) {
             if (now - it->second.timestamp > threshold) {
                 std::cout << "Removing stale mapping: " << it->first << " -> " << it->second.public_ip << std::endl;
                 ip_pool.insert(it->second.public_ip);
                 save_ip_pool();
+
                 it = nat_table.erase(it);
+                updated = true; // Mark for file rewrite
             } else {
                 ++it;
             }
         }
 
+        if (updated) {
+            save_mapping_to_file("", {}); // Rewrite file with updated mappings
+        }
+
         print_mappings();
     }
 }
+
+
 
 
 void NAT::print_mappings() {
@@ -156,6 +170,65 @@ void NAT::print_mappings() {
     std::cout << "=========================================\n";
 }
 
+// Load existing mappings from file
+void NAT::load_mappings_from_file() {
+    std::ifstream mapping_file("nat_mappings.txt");
+    if (!mapping_file.is_open()) {
+        std::cerr << "No existing mapping file found. Starting fresh." << std::endl;
+        return;
+    }
+
+    std::string private_ip, public_ip;
+    std::time_t timestamp;
+    while (mapping_file >> private_ip >> public_ip >> timestamp) {
+        nat_table[private_ip] = {public_ip, timestamp};
+    }
+
+    mapping_file.close();
+}
+
+// Save a single mapping to the file
+void NAT::save_mapping_to_file(const std::string& private_ip, const Mapping& mapping) {
+    // Rewrite the entire mapping file
+    std::ofstream mapping_file("nat_mappings.txt", std::ios::trunc);
+    if (!mapping_file.is_open()) {
+        std::cerr << "Error: Unable to open mapping file for writing." << std::endl;
+        return;
+    }
+
+    for (const auto& entry : nat_table) {
+        mapping_file << entry.first << " " << entry.second.public_ip << " " << entry.second.timestamp << "\n";
+    }
+
+    mapping_file.close();
+}
+
+
+// Remove a single mapping from the file
+void NAT::remove_mapping_from_file(const std::string& private_ip) {
+    std::ifstream mapping_file("nat_mappings.txt");
+    if (!mapping_file.is_open()) {
+        std::cerr << "Error: Unable to open mapping file for reading." << std::endl;
+        return;
+    }
+
+    std::ofstream temp_file("temp_mappings.txt");
+    std::string file_private_ip, file_public_ip;
+    std::time_t file_timestamp;
+
+    while (mapping_file >> file_private_ip >> file_public_ip >> file_timestamp) {
+        if (file_private_ip != private_ip) {
+            temp_file << file_private_ip << " " << file_public_ip << " " << file_timestamp << "\n";
+        }
+    }
+
+    mapping_file.close();
+    temp_file.close();
+
+    // Replace original file with updated file
+    std::remove("nat_mappings.txt");
+    std::rename("temp_mappings.txt", "nat_mappings.txt");
+}
 
 
 // Destructor
