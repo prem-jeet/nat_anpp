@@ -8,6 +8,8 @@
 #include <set>
 #include <netinet/in.h>
 #include <fstream>
+#include <iomanip>
+#include <sys/stat.h>
 
 struct Mapping {
     std::string public_ip;
@@ -30,16 +32,21 @@ private:
     std::set<std::string> ip_pool;
     std::mutex nat_mutex;
 
+    // Core methods
     void initialize_ip_pool();
     void save_ip_pool();
     void handle_client(int client_socket);
     void cleanup_mappings();
     void print_mappings();
+    void log_event(const std::string& event);
 
-    // File-related functions
+    // File-related methods
     void load_mappings_from_file();
     void save_mapping_to_file(const std::string& private_ip, const Mapping& mapping);
-    void remove_mapping_from_file(const std::string& private_ip);
+
+    // New methods for configuration updates
+    void watch_config_file(); // Monitor configuration file
+    void apply_config_changes(const std::string& conf_file); // Apply changes from file
 };
 
 #endif
